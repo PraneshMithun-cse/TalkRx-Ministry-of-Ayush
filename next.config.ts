@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   trailingSlash: true,
-  serverExternalPackages: ["pdf-parse"],
+  serverExternalPackages: ["unpdf", "@napi-rs/canvas"],
   turbopack: {
     root: __dirname,
   },

@@ -147,30 +147,63 @@ export async function extractMedicalDocument(imageDataUrl: string): Promise<Docu
   }
 }
 
+/** Rasterises the first pages of an image-only PDF and runs each through Groq Vision OCR. */
+async function extractImageOnlyPdf(pdfBuffer: Buffer, pageCount: number): Promise<DocumentOcrResult | null> {
+  try {
+    const { renderPageAsImage } = await import("unpdf");
+    const canvasImport = () => import("@napi-rs/canvas");
+    const pages = Math.min(pageCount || 1, 3);
+
+    const results: DocumentOcrResult[] = [];
+    for (let p = 1; p <= pages; p++) {
+      const png = await renderPageAsImage(new Uint8Array(pdfBuffer), p, {
+        canvasImport,
+        scale: 2,
+      });
+      const dataUrl = `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
+      results.push(await extractMedicalDocument(dataUrl));
+    }
+    if (!results.length) return null;
+
+    const merged: DocumentOcrResult = {
+      rawText: results.map((r, i) => `--- Page ${i + 1} ---\n${r.rawText}`).join("\n\n"),
+      ocrConfidence: clampConfidence(results.reduce((s, r) => s + r.ocrConfidence, 0) / results.length),
+      extractedMedicines: results.flatMap((r) => r.extractedMedicines),
+      extractedLabs: results.flatMap((r) => r.extractedLabs),
+      extractedDiagnoses: Array.from(new Set(results.flatMap((r) => r.extractedDiagnoses))),
+    };
+    return merged;
+  } catch (err) {
+    console.error("extractImageOnlyPdf: rasterise/vision failed", err);
+    return null;
+  }
+}
+
 /**
- * PDF path: extracts the text layer with pdf-parse, then runs structured clinical
- * extraction through Groq's text model. Handles digital lab reports / e-prescriptions.
- * Scanned (image-only) PDFs yield little/no text — flagged with low confidence.
+ * PDF path: extracts the text layer with unpdf (pure-JS, serverless-safe), then runs
+ * structured clinical extraction through Groq's text model. Handles digital lab reports
+ * / e-prescriptions. If a PDF is image-only (no text layer) it is rasterised page-by-page
+ * and pushed through Groq Vision OCR instead.
  */
 export async function extractMedicalDocumentFromPdf(pdfBuffer: Buffer): Promise<DocumentOcrResult> {
   let pdfText = "";
   let pageCount = 0;
   try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(pdfBuffer) });
-    const result = await parser.getText();
-    pdfText = (result.text ?? "").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
-    pageCount = (result as { total?: number }).total ?? 0;
-    await parser.destroy();
+    const { extractText, getDocumentProxy } = await import("unpdf");
+    const doc = await getDocumentProxy(new Uint8Array(pdfBuffer));
+    const { text, totalPages } = await extractText(doc, { mergePages: true });
+    pdfText = (text ?? "").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+    pageCount = totalPages ?? 0;
   } catch (err) {
-    console.error("extractMedicalDocumentFromPdf: pdf-parse failed", err);
+    console.error("extractMedicalDocumentFromPdf: unpdf text extraction failed", err);
   }
 
+  // Image-only PDF (no selectable text) → rasterise the first pages and use Vision OCR.
   if (pdfText.length < 20) {
+    const viaVision = await extractImageOnlyPdf(pdfBuffer, pageCount);
+    if (viaVision) return viaVision;
     return {
-      rawText:
-        pdfText ||
-        `Scanned PDF received (${pageCount || "?"} page(s)) — no selectable text layer. Re-upload a photo of the document for Vision OCR.`,
+      rawText: `Scanned PDF received (${pageCount || "?"} page(s)) — could not read it. Try uploading a clearer photo of the document.`,
       ocrConfidence: 0.15,
       extractedMedicines: [],
       extractedLabs: [],
