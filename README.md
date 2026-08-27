@@ -109,14 +109,19 @@ Open <http://localhost:3000>, sign up, and complete onboarding as a **Patient** 
 
 ## Deploy to Vercel
 
-1. Import the repository into Vercel.
-2. Provision a PostgreSQL database (Vercel Postgres, Neon, Supabase, …) and copy its
-   connection string.
-3. Add the environment variables from the `.env` block above in
-   **Project → Settings → Environment Variables**.
-4. Set the **Build Command** to `npm run vercel-build` (runs
-   `prisma migrate deploy` before the build).
-5. Deploy.
+1. Provision a PostgreSQL database (Vercel Postgres, Neon, Supabase, …).
+2. Run the migrations against it once, from your machine:
+
+   ```bash
+   DATABASE_URL="<prod connection string>" npx prisma migrate deploy
+   ```
+
+3. Import the repository into Vercel.
+4. Add the environment variables from the `.env` block above in
+   **Project → Settings → Environment Variables** (`DATABASE_URL` = the same prod
+   connection string).
+5. Deploy. The default build command (`npm run build`) runs `prisma generate` then
+   `next build`; it does not need database access at build time.
 
 The Clerk webhook endpoint is `https://<your-domain>/api/webhooks/clerk` — add it in
 the Clerk dashboard and set `CLERK_WEBHOOK_SECRET`.

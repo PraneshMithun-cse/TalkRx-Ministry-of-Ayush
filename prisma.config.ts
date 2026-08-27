@@ -15,6 +15,7 @@ export default defineConfig({
     seed: "node prisma/seed.mjs",
   },
   datasource: {
+    // Prisma CLI only. The Next.js runtime resolves the same chain in src/lib/prisma.ts.
     url,
   },
 });
