@@ -52,6 +52,7 @@ interface VaultState {
 
 interface VaultContextValue {
   isHydrated: boolean;
+  vaultError: string | null;
   role: "PATIENT" | "DOCTOR" | "PHARMACY" | "STAFF" | null;
   patients: PatientProfile[];
   currentPatient: PatientProfile | null;
@@ -115,36 +116,47 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   const [state, setState] = useState<VaultState>(EMPTY_STATE);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [vaultError, setVaultError] = useState<string | null>(null);
 
   const fetchSession = useCallback(async () => {
     if (!isSignedIn) {
       setState(EMPTY_STATE);
+      setVaultError(null);
       setIsHydrated(true);
       return;
     }
-    const session = await getSessionStateAction();
-    if (session.role === null && pathname !== "/onboarding") {
-      router.replace("/onboarding");
-      return;
+    try {
+      const session = await getSessionStateAction();
+      if (session.role === null && pathname !== "/onboarding") {
+        router.replace("/onboarding");
+        return;
+      }
+      setState((prev) => ({
+        role: session.role,
+        patients: session.patients,
+        currentPatient: prev.currentPatient && session.patients.some((p) => p.id === prev.currentPatient?.id)
+          ? session.patients.find((p) => p.id === prev.currentPatient?.id)!
+          : session.currentPatient,
+        doctorIdentity: session.doctorIdentity,
+      }));
+      setVaultError(null);
+    } catch (err) {
+      // Most commonly a missing / unreachable / un-migrated database on the deployment.
+      console.error("VaultProvider: session load failed", err);
+      setState(EMPTY_STATE);
+      setVaultError(
+        err instanceof Error && /P1001|ECONNREFUSED|database|relation .* does not exist/i.test(err.message)
+          ? "Can't reach the database. Set DATABASE_URL and run the migrations, then reload."
+          : "Something went wrong loading your session. Please reload."
+      );
+    } finally {
+      setIsHydrated(true);
     }
-    setState((prev) => ({
-      role: session.role,
-      patients: session.patients,
-      currentPatient: prev.currentPatient && session.patients.some((p) => p.id === prev.currentPatient?.id)
-        ? session.patients.find((p) => p.id === prev.currentPatient?.id)!
-        : session.currentPatient,
-      doctorIdentity: session.doctorIdentity,
-    }));
-    setIsHydrated(true);
   }, [isSignedIn, pathname, router]);
 
   useEffect(() => {
-    let isMounted = true;
     if (!isLoaded) return;
-    fetchSession().catch(() => {});
-    return () => {
-      isMounted = false;
-    };
+    void fetchSession();
   }, [isLoaded, fetchSession]);
 
   const patchPatient = useCallback((updated: PatientProfile) => {
@@ -313,6 +325,7 @@ export function VaultProvider({ children }: { children: React.ReactNode }) {
 
   const value: VaultContextValue = {
     isHydrated,
+    vaultError,
     role: state.role,
     patients: state.patients,
     currentPatient: state.currentPatient,

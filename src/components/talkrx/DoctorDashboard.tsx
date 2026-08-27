@@ -43,7 +43,7 @@ const DEFAULT_IDENTITY: DoctorIdentity = {
 };
 
 export function DoctorDashboard() {
-  const { isHydrated, patients, doctorIdentity, setDoctorIdentity, lookupPatient, addDoctorRecord, grantConsent, logAccess, selectPatient, checkPrescriptionSafety } = useVault();
+  const { isHydrated, vaultError, patients, doctorIdentity, setDoctorIdentity, lookupPatient, addDoctorRecord, grantConsent, logAccess, selectPatient, checkPrescriptionSafety } = useVault();
   const [safetyFindings, setSafetyFindings] = useState<{ level: string; rule: string; detail: string }[]>([]);
   const [checkingSafety, setCheckingSafety] = useState(false);
   const [selectedPatientId, setSelectedPatientId] = useState<string>("");
@@ -68,6 +68,22 @@ export function DoctorDashboard() {
 
   const effectivePatientId = selectedPatientId || patients[0]?.id || "";
   const patient = patients.find((p) => p.id === effectivePatientId) || patients[0];
+
+  if (vaultError) {
+    return (
+      <div className="rounded-3xl border border-red-200 bg-red-50/60 p-8 text-center space-y-2">
+        <p className="text-sm font-bold text-red-800">Couldn&apos;t load the patient queue</p>
+        <p className="text-xs text-red-600 max-w-md mx-auto">{vaultError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-2 inline-flex rounded-full bg-red-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-700"
+        >
+          Reload
+        </button>
+      </div>
+    );
+  }
 
   if (!isHydrated || !patient) {
     return (

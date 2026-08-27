@@ -64,6 +64,7 @@ export function PatientPassport() {
     switchRole,
     updateHealthOverview,
     resetAllData,
+    vaultError,
   } = useVault();
 
   const [activeTab, setActiveTabState] = useState<PassportTab>("overview");
@@ -98,6 +99,22 @@ export function PatientPassport() {
     return (
       <div className="rounded-3xl border border-black/[0.08] bg-white/60 p-10 text-center text-xs text-neutral-400 animate-pulse">
         Loading your TalkRx vault&hellip;
+      </div>
+    );
+  }
+
+  if (vaultError) {
+    return (
+      <div className="rounded-3xl border border-red-200 bg-red-50/60 p-8 text-center space-y-2">
+        <p className="text-sm font-bold text-red-800">Couldn&apos;t load your health vault</p>
+        <p className="text-xs text-red-600 max-w-md mx-auto">{vaultError}</p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          className="mt-2 inline-flex rounded-full bg-red-600 px-4 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-red-700"
+        >
+          Reload
+        </button>
       </div>
     );
   }
